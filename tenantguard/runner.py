@@ -14,6 +14,7 @@ from tenantguard.config import (
     ConfigValidationError,
     TenantGuardConfig,
     collect_secrets,
+    normalize_filter_tags,
 )
 from tenantguard.models import RuntimeContext
 from tenantguard.results import (
@@ -31,6 +32,8 @@ from tenantguard.templating import render_path
 class RunOptions:
     include: list[str] | None = None
     exclude: list[str] | None = None
+    tags: list[str] | None = None
+    exclude_tags: list[str] | None = None
     verbose: bool = False
     confirm_authorized_scope: bool = False
 
@@ -42,13 +45,19 @@ def _matches_filter(value: str, patterns: list[str]) -> bool:
     )
 
 
+def _matches_any_tag(check: CheckConfig, tags: list[str]) -> bool:
+    return any(tag in check.tags for tag in tags)
+
+
 def filter_checks(
     checks: list[CheckConfig],
     *,
     include: list[str] | None,
     exclude: list[str] | None,
+    tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
 ) -> list[CheckConfig]:
-    """Filter checks by id or case-insensitive name substring."""
+    """Filter checks by id/name substring and optional tags."""
     filtered = checks
     if include:
         filtered = [
@@ -63,6 +72,16 @@ def filter_checks(
             if not (
                 _matches_filter(check.id, exclude) or _matches_filter(check.name, exclude)
             )
+        ]
+    if tags:
+        normalized_tags = normalize_filter_tags(tags)
+        filtered = [check for check in filtered if _matches_any_tag(check, normalized_tags)]
+    if exclude_tags:
+        normalized_exclude_tags = normalize_filter_tags(exclude_tags)
+        filtered = [
+            check
+            for check in filtered
+            if not _matches_any_tag(check, normalized_exclude_tags)
         ]
     return filtered
 
@@ -127,7 +146,28 @@ def run_checks(
         config.checks,
         include=options.include,
         exclude=options.exclude,
+        tags=options.tags,
+        exclude_tags=options.exclude_tags,
     )
+
+    if not selected_checks:
+        finished_at = datetime.now(UTC)
+        return RunResult(
+            project_name=config.project.name,
+            target_base_url=config.target.base_url,
+            started_at=started_at,
+            finished_at=finished_at,
+            elapsed_ms=(time.perf_counter() - run_started) * 1000,
+            checks=[],
+            summary=RunSummary(
+                total=0,
+                passed=0,
+                failed=0,
+                errors=0,
+                skipped=0,
+                highest_failed_severity=None,
+            ),
+        )
 
     if len(selected_checks) > config.safety.max_requests_per_run:
         msg = (
@@ -147,7 +187,7 @@ def run_checks(
         perf_started = time.perf_counter()
 
         try:
-            rendered_path = render_path(check.request.path, config)
+            rendered_path = render_path(check.request.path, config, check_id=check.id)
         except ConfigValidationError as exc:
             elapsed_ms = (time.perf_counter() - perf_started) * 1000
             check_results.append(

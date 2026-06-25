@@ -83,6 +83,12 @@ checks:
     description: "A regular tenant A user must not read tenant B invoices via the vulnerable route."
     severity: "critical"
     actor: "tenant_a_user"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
+      - idor
+      - vulnerable
     request:
       method: "GET"
       path: "/vulnerable/invoices/{{ resources.invoice_b.id }}"
@@ -94,6 +100,10 @@ checks:
     description: "List endpoints must not expose foreign tenant customer markers."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - list-leakage
+      - read-only
+      - vulnerable
     request:
       method: "GET"
       path: "/vulnerable/customers"
@@ -108,6 +118,11 @@ checks:
     description: "Regular users must not access admin-only settings."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - admin-access
+      - vertical-access
+      - read-only
+      - vulnerable
     request:
       method: "GET"
       path: "/vulnerable/admin/settings"
@@ -119,6 +134,11 @@ checks:
     description: "Secure invoice access must block cross-tenant reads."
     severity: "critical"
     actor: "tenant_a_user"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
+      - idor
     request:
       method: "GET"
       path: "/secure/invoices/{{ resources.invoice_b.id }}"
@@ -130,6 +150,9 @@ checks:
     description: "Secure customer list must filter by tenant."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - list-leakage
+      - read-only
     request:
       method: "GET"
       path: "/secure/customers"
@@ -144,6 +167,10 @@ checks:
     description: "Secure admin settings must require admin role."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - admin-access
+      - vertical-access
+      - read-only
     request:
       method: "GET"
       path: "/secure/admin/settings"
@@ -155,6 +182,10 @@ checks:
     description: "Tenant admins should access their tenant settings."
     severity: "medium"
     actor: "tenant_a_admin"
+    tags:
+      - admin-access
+      - vertical-access
+      - read-only
     request:
       method: "GET"
       path: "/secure/admin/settings"
@@ -168,6 +199,10 @@ checks:
     description: "Platform admins may access cross-tenant resources by design."
     severity: "medium"
     actor: "platform_admin"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
     request:
       method: "GET"
       path: "/secure/invoices/{{ resources.invoice_b.id }}"

@@ -217,6 +217,47 @@ tenantguard run tenantguard.yml --env .env.local --include TG-001
 tenantguard run tenantguard.yml --env .env.local --exclude admin
 ```
 
+### Check tags
+
+Checks may include optional `tags` to organize larger authorization test suites. Tags are metadata only: they filter explicit checks from your config and do not discover endpoints or scan your application.
+
+```yaml
+checks:
+  - id: AUTH-001
+    name: "Tenant A user cannot access Tenant B invoice"
+    severity: "critical"
+    actor: "tenant_a_user"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
+    request:
+      method: "GET"
+      path: "/api/invoices/{{ resources.tenant_b_invoice.id }}"
+    expect:
+      status_in: [403, 404]
+```
+
+Tag names are normalized to lowercase. Use letters, numbers, dots, underscores, and hyphens (for example `tenant-isolation`, `read-only`, `admin-access`).
+
+Filter by tag (repeatable; multiple `--tag` values use OR semantics):
+
+```bash
+tenantguard run tenantguard.yml --tag tenant-isolation
+tenantguard run tenantguard.yml --exclude-tag write
+tenantguard run tenantguard.yml --tag tenant-isolation --dry-run
+```
+
+Filter order: `--include`, then `--exclude`, then `--tag`, then `--exclude-tag`. Existing `--include` and `--exclude` options still work alongside tag filters.
+
+### List checks without requests
+
+Use `--list-checks` to inspect which checks would run after filters. This mode loads and validates the config, applies filters, and prints a table. It does not resolve tokens, require environment variables, run safety target checks, or send HTTP requests.
+
+```bash
+tenantguard run tenantguard.yml --list-checks
+```
+
 Public targets require explicit confirmation:
 
 ```bash
@@ -283,6 +324,37 @@ Expected outcome:
 - The automated test suite also verifies the demo flow using a local test server (`tests/test_demo_e2e.py`).
 
 See [`examples/vulnerable-fastapi-app/README.md`](examples/vulnerable-fastapi-app/README.md) for curl examples.
+
+## Write-method checks
+
+By default, TenantGuard blocks write-method checks (`POST`, `PUT`, `PATCH`, `DELETE`) when:
+
+```yaml
+safety:
+  allow_write_methods: false
+```
+
+To run explicit write authorization checks, set `allow_write_methods: true` in your config. Only do this against local or staging environments with test data you control. Do not run destructive write checks against production without full control over the target data.
+
+TenantGuard still executes only the checks you define in YAML. It does not discover endpoints or generate write requests automatically.
+
+Validate and run the write-method demo:
+
+```bash
+tenantguard validate examples/configs/tenantguard-demo-write.yml
+
+tenantguard run examples/configs/tenantguard-demo-write.yml \
+  --env examples/vulnerable-fastapi-app/.env.demo \
+  --report html \
+  --output reports/demo-write-report.html
+```
+
+Expected outcome:
+
+- `TG-WRITE-001` **fails** against the vulnerable PATCH endpoint (cross-tenant update succeeds when it should not).
+- `TG-WRITE-002` through `TG-WRITE-004` **pass** against secure PATCH endpoints.
+- The full write demo may exit with code `1` because the vulnerable check is expected to fail.
+- Run secure write checks only with `--exclude vulnerable`.
 
 ## Reports
 

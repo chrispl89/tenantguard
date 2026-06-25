@@ -305,6 +305,69 @@ def test_html_reporter_does_not_leak_cookie_session_value() -> None:
     assert "[REDACTED]" in html_output
 
 
+def test_html_reporter_includes_escapable_patch_request_body() -> None:
+    started = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    finished = datetime(2026, 1, 1, 12, 0, 1, tzinfo=UTC)
+    request = RequestSnapshot(
+        method="PATCH",
+        url="http://localhost:8000/secure/invoices/inv_a_001",
+        path="/secure/invoices/inv_a_001",
+        actor="tenant_a_admin",
+        headers={"Authorization": "[REDACTED]"},
+        json_body={"amount": 1234},
+    )
+    check = CheckResult(
+        id="TG-WRITE-003",
+        name="Authorized tenant admin can update own invoice",
+        severity=Severity.HIGH,
+        actor="tenant_a_admin",
+        status=CheckStatus.FAILED,
+        request=request,
+        response=ResponseSnapshot(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            body_snippet='{"tenant_id":"tenant_a","amount":1234}',
+            elapsed_ms=12.0,
+        ),
+        assertions=[
+            AssertionResult(
+                name="status_in",
+                status=AssertionStatus.FAILED,
+                message="Expected status in [403], got 200.",
+                expected=[403],
+                actual=200,
+            )
+        ],
+        error_message=None,
+        started_at=started,
+        finished_at=finished,
+        elapsed_ms=12.0,
+    )
+    result = RunResult(
+        project_name="Write demo",
+        target_base_url="http://localhost:8000",
+        started_at=started,
+        finished_at=finished,
+        elapsed_ms=50.0,
+        checks=[check],
+        summary=RunSummary(
+            total=1,
+            passed=0,
+            failed=1,
+            errors=0,
+            skipped=0,
+            highest_failed_severity=Severity.HIGH,
+        ),
+    )
+
+    html_output = render_html_report(result)
+    assert "amount" in html_output
+    assert "1234" in html_output
+    assert "Request body" in html_output
+    assert "PATCH" in html_output
+    assert "secret-token-value" not in html_output
+
+
 def test_markdown_reporter_contains_summary_and_findings_without_tokens() -> None:
     markdown = render_markdown_report(_sample_result())
     assert "# TenantGuard Report" in markdown

@@ -75,6 +75,12 @@ checks:
     description: "A regular user from tenant A must not be able to read an invoice owned by tenant B."
     severity: "critical"
     actor: "tenant_a_user"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
+      - idor
+      - bola
     request:
       method: "GET"
       path: "/api/invoices/{{ resources.tenant_b_invoice.id }}"
@@ -86,6 +92,12 @@ checks:
     description: "A regular user from tenant B must not be able to read an invoice owned by tenant A."
     severity: "critical"
     actor: "tenant_b_user"
+    tags:
+      - tenant-isolation
+      - horizontal-access
+      - read-only
+      - idor
+      - bola
     request:
       method: "GET"
       path: "/api/invoices/{{ resources.tenant_a_invoice.id }}"
@@ -97,6 +109,10 @@ checks:
     description: "A regular tenant user must not be able to access admin-only settings."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - admin-access
+      - vertical-access
+      - read-only
     request:
       method: "GET"
       path: "/api/admin/settings"
@@ -108,6 +124,9 @@ checks:
     description: "List endpoints must filter records by tenant."
     severity: "high"
     actor: "tenant_a_user"
+    tags:
+      - list-leakage
+      - read-only
     request:
       method: "GET"
       path: "/api/customers"

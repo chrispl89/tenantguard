@@ -252,6 +252,45 @@ def test_public_target_blocked_without_confirmation() -> None:
         run_checks(config, runtime, RunOptions(confirm_authorized_scope=False))
 
 
+def test_write_methods_allowed_when_enabled() -> None:
+    config, runtime = _make_config(
+        {
+            "target": {"base_url": "http://localhost:8000"},
+            "safety": {"allow_write_methods": True},
+            "actors": {
+                "tenant_a_user": {
+                    "tenant_id": "tenant_a",
+                    "role": "user",
+                    "auth": {"type": "bearer", "token_env": "TENANT_A_USER_TOKEN"},
+                }
+            },
+            "checks": [
+                {
+                    "id": "TG-WRITE-001",
+                    "name": "Patch item",
+                    "severity": "high",
+                    "actor": "tenant_a_user",
+                    "request": {
+                        "method": "PATCH",
+                        "path": "/api/items/1",
+                        "json": {"amount": 10},
+                    },
+                    "expect": {"status_in": [200]},
+                }
+            ],
+        }
+    )
+
+    with respx.mock:
+        respx.patch("http://localhost:8000/api/items/1").mock(
+            return_value=httpx.Response(200, text='{"ok":true}')
+        )
+        result = run_checks(config, runtime, RunOptions())
+
+    assert result.summary.passed == 1
+    assert result.checks[0].request.json_body == {"amount": 10}
+
+
 def test_write_methods_blocked_before_requests() -> None:
     config, runtime = _make_config(
         {

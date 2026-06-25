@@ -28,6 +28,9 @@ checks:
     name: "Client A can access own profile"
     severity: "medium"
     actor: "client_a"
+    tags:
+      - session-cookie
+      - read-only
     request:
       method: "GET"
       path: "/api/me"

@@ -29,22 +29,26 @@ USERS_BY_TOKEN: dict[str, dict[str, str]] = {
     },
 }
 
-INVOICES: dict[str, Invoice] = {
-    "inv_a_001": Invoice(
-        id="inv_a_001",
-        tenant_id="tenant_a",
-        customer_email="alice@tenant-a.example",
-        amount=1200,
-        marker="TENANT_A_INVOICE_MARKER",
-    ),
-    "inv_b_001": Invoice(
-        id="inv_b_001",
-        tenant_id="tenant_b",
-        customer_email="bob@tenant-b.example",
-        amount=2400,
-        marker="TENANT_B_INVOICE_MARKER",
-    ),
-}
+def _initial_invoices() -> dict[str, Invoice]:
+    return {
+        "inv_a_001": Invoice(
+            id="inv_a_001",
+            tenant_id="tenant_a",
+            customer_email="alice@tenant-a.example",
+            amount=1200,
+            marker="TENANT_A_INVOICE_MARKER",
+        ),
+        "inv_b_001": Invoice(
+            id="inv_b_001",
+            tenant_id="tenant_b",
+            customer_email="bob@tenant-b.example",
+            amount=2400,
+            marker="TENANT_B_INVOICE_MARKER",
+        ),
+    }
+
+
+INVOICES: dict[str, Invoice] = _initial_invoices()
 
 CUSTOMERS: dict[str, Customer] = {
     "cus_a_001": Customer(
@@ -100,6 +104,12 @@ def list_customers_for_tenant(tenant_id: str) -> list[Customer]:
 def get_admin_settings(tenant_id: str) -> AdminSettings | None:
     settings = ADMIN_SETTINGS.get(tenant_id)
     return deepcopy(settings) if settings else None
+
+
+def reset_demo_data() -> None:
+    """Reset mutable in-memory demo data to its initial state."""
+    INVOICES.clear()
+    INVOICES.update(_initial_invoices())
 
 
 def update_invoice(

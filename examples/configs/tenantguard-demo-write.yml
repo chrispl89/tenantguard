@@ -1,0 +1,129 @@
+version: '0.1'
+project:
+  name: "TenantGuard Vulnerable FastAPI Demo \u2014 Write Methods"
+  description: PATCH authorization regression checks against the local demo application
+target:
+  base_url: http://localhost:8000
+  authorized: true
+safety:
+  allow_write_methods: true
+  confirm_authorized_scope: true
+  max_requests_per_run: 20
+  request_delay_ms: 50
+  redact_sensitive_values: true
+http:
+  timeout_seconds: 10
+  verify_tls: true
+  user_agent: TenantGuard/0.1.0 authorization-regression-tester
+  default_headers:
+    Accept: application/json
+    Content-Type: application/json
+actors:
+  tenant_a_user:
+    label: Tenant A regular user
+    tenant_id: tenant_a
+    role: user
+    auth:
+      type: bearer
+      token_env: TENANT_A_USER_TOKEN
+  tenant_a_admin:
+    label: Tenant A admin
+    tenant_id: tenant_a
+    role: admin
+    auth:
+      type: bearer
+      token_env: TENANT_A_ADMIN_TOKEN
+  platform_admin:
+    label: Platform admin
+    tenant_id: platform
+    role: platform_admin
+    auth:
+      type: bearer
+      token_env: PLATFORM_ADMIN_TOKEN
+resources:
+  invoice_a:
+    type: invoice
+    id: inv_a_001
+    tenant_id: tenant_a
+  invoice_b:
+    type: invoice
+    id: inv_b_001
+    tenant_id: tenant_b
+checks:
+- id: TG-WRITE-001
+  name: Vulnerable cross-tenant invoice update should not succeed
+  description: A regular tenant A user must not update tenant B invoices via the vulnerable
+    route.
+  severity: critical
+  actor: tenant_a_user
+  request:
+    method: PATCH
+    path: /vulnerable/invoices/{{ resources.invoice_b.id }}
+    json:
+      amount: 9999
+  expect:
+    status_in:
+    - 403
+    - 404
+  tags:
+  - tenant-isolation
+  - horizontal-access
+  - write
+  - idor
+  - vulnerable
+- id: TG-WRITE-002
+  name: Secure cross-tenant invoice update is blocked
+  description: Secure invoice updates must block cross-tenant writes.
+  severity: critical
+  actor: tenant_a_user
+  request:
+    method: PATCH
+    path: /secure/invoices/{{ resources.invoice_b.id }}
+    json:
+      amount: 9999
+  expect:
+    status_in:
+    - 403
+    - 404
+  tags:
+  - tenant-isolation
+  - horizontal-access
+  - write
+  - idor
+- id: TG-WRITE-003
+  name: Authorized tenant admin can update own invoice
+  description: Tenant admins may update invoices within their tenant.
+  severity: high
+  actor: tenant_a_admin
+  request:
+    method: PATCH
+    path: /secure/invoices/{{ resources.invoice_a.id }}
+    json:
+      amount: 1234
+  expect:
+    status_in:
+    - 200
+    body_contains:
+    - tenant_a
+  tags:
+  - vertical-access
+  - write
+- id: TG-WRITE-004
+  name: Platform admin can update tenant B invoice through secure endpoint
+  description: Platform admins may update invoices across tenants on secure routes.
+  severity: medium
+  actor: platform_admin
+  request:
+    method: PATCH
+    path: /secure/invoices/{{ resources.invoice_b.id }}
+    json:
+      amount: 4321
+  expect:
+    status_in:
+    - 200
+    body_contains:
+    - TENANT_B_INVOICE_MARKER
+  tags:
+  - tenant-isolation
+  - horizontal-access
+  - write

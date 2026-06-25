@@ -84,7 +84,7 @@ def test_check_unknown_actor_fails_structure_validation(tmp_path: Path) -> None:
     data = _base_config()
     data["checks"][0]["actor"] = "missing_actor"
     config = load_config(_write_config(tmp_path, data))
-    with pytest.raises(ConfigValidationError, match="unknown actor"):
+    with pytest.raises(ConfigValidationError, match='references unknown actor'):
         validate_config_structure(config)
 
 
@@ -176,8 +176,8 @@ def test_unknown_resource_placeholder_raises(tmp_path: Path) -> None:
     data = _base_config()
     data["checks"][0]["request"]["path"] = "/api/invoices/{{ resources.missing.id }}"
     config = load_config(_write_config(tmp_path, data))
-    with pytest.raises(ConfigValidationError, match="Unknown resource placeholder"):
-        render_path(config.checks[0].request.path, config)
+    with pytest.raises(ConfigValidationError, match='references unknown resource'):
+        render_path(config.checks[0].request.path, config, check_id=config.checks[0].id)
 
 
 def test_bearer_auth_config_loads_successfully(tmp_path: Path) -> None:
@@ -298,5 +298,8 @@ def test_unknown_actor_placeholder_raises(tmp_path: Path) -> None:
     data = _base_config()
     data["checks"][0]["request"]["path"] = "/api/tenants/{{ actors.missing.tenant_id }}"
     config = load_config(_write_config(tmp_path, data))
-    with pytest.raises(ConfigValidationError, match="Unknown actor placeholder"):
-        render_path(config.checks[0].request.path, config)
+    with pytest.raises(
+        ConfigValidationError,
+        match='references unknown actor "missing" in template',
+    ):
+        render_path(config.checks[0].request.path, config, check_id=config.checks[0].id)

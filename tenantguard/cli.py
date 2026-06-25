@@ -18,6 +18,8 @@ from tenantguard.config import (
     ConfigValidationError,
     TenantGuardConfig,
     collect_secrets,
+    find_unused_actors,
+    find_unused_resources,
     load_config,
     load_env_file,
     resolve_tokens,
@@ -114,6 +116,8 @@ TENANT_B_USER_TOKEN=replace_me
 """
 
 SAMPLE_CONFIG = INIT_CONFIG
+MAX_UNUSED_WARNINGS = 10
+NO_CHECKS_MATCHED_MESSAGE = "No checks matched the selected filters."
 
 
 class ReportFormat(StrEnum):
@@ -159,6 +163,75 @@ def _load_and_validate(
     return config, env
 
 
+def _load_config_structure(config_path: Path) -> TenantGuardConfig:
+    try:
+        config = load_config(config_path)
+        validate_config_structure(config)
+    except ConfigValidationError as exc:
+        console.print(f"[red]Configuration error:[/red] {exc}")
+        raise typer.Exit(code=ExitCode.INVALID_CONFIG) from exc
+    return config
+
+
+def _format_tags(tags: list[str]) -> str:
+    return ", ".join(tags) if tags else "-"
+
+
+def _print_unused_warnings(config: TenantGuardConfig) -> None:
+    warnings: list[str] = []
+    for actor_id in find_unused_actors(config):
+        warnings.append(
+            f'Warning: actor "{actor_id}" is defined but not used by any check.'
+        )
+    for resource_id in find_unused_resources(config):
+        warnings.append(
+            f'Warning: resource "{resource_id}" is defined but not used by any check.'
+        )
+    if not warnings:
+        return
+    for warning in warnings[:MAX_UNUSED_WARNINGS]:
+        console.print(f"[yellow]{warning}[/yellow]")
+    remaining = len(warnings) - MAX_UNUSED_WARNINGS
+    if remaining > 0:
+        console.print(f"[yellow]...and {remaining} more.[/yellow]")
+
+
+def _print_checks_table(
+    checks: list[CheckConfig],
+    *,
+    title: str,
+    config: TenantGuardConfig | None = None,
+    secrets: list[str] | None = None,
+) -> None:
+    table = Table(title=title)
+    table.add_column("Check ID")
+    table.add_column("Severity")
+    table.add_column("Actor")
+    table.add_column("Tags")
+    table.add_column("Method")
+    table.add_column("Path")
+    table.add_column("Name")
+    for check in checks:
+        path = check.request.path
+        if config is not None:
+            try:
+                path = render_path(check.request.path, config, check_id=check.id)
+            except ConfigValidationError:
+                path = check.request.path
+            if secrets is not None:
+                path = redact_secrets(path, secrets)
+        table.add_row(
+            check.id,
+            check.severity.value,
+            check.actor,
+            _format_tags(check.tags),
+            check.request.method,
+            path,
+            check.name,
+        )
+    console.print(table)
+
+
 def _print_validate_summary(config: TenantGuardConfig) -> None:
     console.print("[green]Configuration is valid.[/green]\n")
     console.print("Target:")
@@ -180,22 +253,12 @@ def _print_dry_run_plan(
     checks: list[CheckConfig],
 ) -> None:
     secrets = collect_secrets(config, runtime)
-    table = Table(title="Planned checks")
-    table.add_column("ID")
-    table.add_column("Severity")
-    table.add_column("Actor")
-    table.add_column("Method")
-    table.add_column("Path")
-    for check in checks:
-        path = render_path(check.request.path, config)
-        table.add_row(
-            check.id,
-            check.severity.value,
-            check.actor,
-            check.request.method,
-            redact_secrets(path, secrets),
-        )
-    console.print(table)
+    _print_checks_table(
+        checks,
+        title="Planned checks",
+        config=config,
+        secrets=secrets,
+    )
     console.print(f"\n[bold]{len(checks)}[/bold] check(s) planned against {config.target.base_url}")
 
 
@@ -211,7 +274,6 @@ def _should_fail(result: RunResult, fail_on: Severity) -> bool:
 def _print_run_summary(result: RunResult) -> None:
     summary = result.summary
     if summary.total == 0:
-        console.print("[yellow]No checks selected.[/yellow]")
         return
 
     console.print("\n[bold]TenantGuard Run Summary[/bold]")
@@ -326,6 +388,7 @@ def validate(
     """Validate a TenantGuard configuration file."""
     config, _ = _load_and_validate(config_path, env_path=env, require_token_env=env is not None)
     _print_inline_token_warning(config)
+    _print_unused_warnings(config)
     _print_validate_summary(config)
 
 
@@ -355,6 +418,24 @@ def run(
         list[str] | None,
         typer.Option("--exclude", help="Exclude checks by id or name substring."),
     ] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Include checks with this tag (repeatable, OR semantics)."),
+    ] = None,
+    exclude_tag: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-tag",
+            help="Exclude checks with this tag (repeatable, OR semantics).",
+        ),
+    ] = None,
+    list_checks: Annotated[
+        bool,
+        typer.Option(
+            "--list-checks",
+            help="List configured checks without resolving tokens or sending requests.",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option("--verbose", help="Show detailed metadata."),
@@ -373,25 +454,54 @@ def run(
     ] = Severity.LOW,
 ) -> None:
     """Run authorization checks against a configured target."""
+    if list_checks:
+        config = _load_config_structure(config_path)
+        _print_inline_token_warning(config)
+        _print_unused_warnings(config)
+        checks = filter_checks(
+            config.checks,
+            include=include,
+            exclude=exclude,
+            tags=tag,
+            exclude_tags=exclude_tag,
+        )
+        if not checks:
+            console.print(f"[yellow]{NO_CHECKS_MATCHED_MESSAGE}[/yellow]")
+            return
+        _print_checks_table(checks, title="Configured checks")
+        return
+
     config, env_vars = _load_and_validate(
         config_path,
         env_path=env,
-        require_token_env=True,
+        require_token_env=not dry_run,
     )
     _print_inline_token_warning(config)
 
     try:
-        runtime = resolve_tokens(config, env_vars)
+        try:
+            runtime = resolve_tokens(config, env_vars)
+        except ConfigValidationError:
+            if not dry_run:
+                raise
+            runtime = RuntimeContext()
         if dry_run:
             check_target_scope(config, confirm_authorized_scope=confirm_authorized_scope)
             check_write_methods(config)
-        checks = filter_checks(config.checks, include=include, exclude=exclude)
+            _print_unused_warnings(config)
+        checks = filter_checks(
+            config.checks,
+            include=include,
+            exclude=exclude,
+            tags=tag,
+            exclude_tags=exclude_tag,
+        )
         if dry_run:
             if verbose:
                 console.print(f"Target: {config.target.base_url}")
                 console.print(f"Actors: {', '.join(config.actors.keys())}")
             if not checks:
-                console.print("[yellow]No checks selected.[/yellow]")
+                console.print(f"[yellow]{NO_CHECKS_MATCHED_MESSAGE}[/yellow]")
                 return
             _print_dry_run_plan(config, runtime, checks)
             return
@@ -402,6 +512,8 @@ def run(
             RunOptions(
                 include=include,
                 exclude=exclude,
+                tags=tag,
+                exclude_tags=exclude_tag,
                 verbose=verbose,
                 confirm_authorized_scope=confirm_authorized_scope,
             ),
@@ -419,6 +531,7 @@ def run(
         console.print(f"\n[green]Report written to:[/green] {report_path}")
 
     if result.summary.total == 0:
+        console.print(f"[yellow]{NO_CHECKS_MATCHED_MESSAGE}[/yellow]")
         return
 
     if result.summary.failed > 0 or result.summary.errors > 0:

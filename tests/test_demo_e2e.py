@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from app.data import reset_demo_data
 from app.main import app
 
 from tenantguard.config import load_config, load_env_file, resolve_tokens
@@ -45,6 +46,7 @@ def demo_server() -> str:
 
 
 def test_tenantguard_demo_end_to_end(demo_server: str) -> None:
+    reset_demo_data()
     config = load_config(CONFIG_PATH)
     config.target.base_url = demo_server
     env = load_env_file(ENV_PATH)

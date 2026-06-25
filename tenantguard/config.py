@@ -17,6 +17,9 @@ from tenantguard.models import RuntimeContext
 ALLOWED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 COOKIE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+TAG_PATTERN = re.compile(r"^[a-z0-9._-]+$")
+RESOURCE_PLACEHOLDER = re.compile(r"\{\{\s*resources\.([a-zA-Z0-9_]+)\.id\s*\}\}")
+ACTOR_PLACEHOLDER = re.compile(r"\{\{\s*actors\.([a-zA-Z0-9_]+)\.tenant_id\s*\}\}")
 
 
 class ConfigValidationError(Exception):
@@ -156,14 +159,61 @@ class ExpectConfig(BaseModel):
     max_response_time_ms: int | None = None
 
 
+def normalize_tag(value: str) -> str:
+    """Normalize a tag for config storage or CLI filtering."""
+    return value.strip().lower()
+
+
+def normalize_filter_tags(tags: list[str]) -> list[str]:
+    """Normalize CLI tag filter values."""
+    return [normalize_tag(tag) for tag in tags]
+
+
 class CheckConfig(BaseModel):
     id: str
     name: str
     description: str | None = None
     severity: Severity
     actor: str
+    tags: list[str] = Field(default_factory=list)
     request: RequestConfig
     expect: ExpectConfig
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            msg = "tags must be a list of strings"
+            raise TypeError(msg)
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, tags: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw_tag in tags:
+            if not isinstance(raw_tag, str):
+                msg = "tags must be a list of strings"
+                raise TypeError(msg)
+            tag = normalize_tag(raw_tag)
+            if not tag:
+                msg = (
+                    'Invalid tag "". Use lowercase letters, numbers, dot, underscore or hyphen.'
+                )
+                raise ValueError(msg)
+            if not TAG_PATTERN.match(tag):
+                msg = (
+                    f'Invalid tag "{raw_tag}". Use lowercase letters, numbers, dot, '
+                    "underscore or hyphen."
+                )
+                raise ValueError(msg)
+            if tag not in seen:
+                seen.add(tag)
+                normalized.append(tag)
+        return normalized
 
 
 class TenantGuardConfig(BaseModel):
@@ -199,8 +249,31 @@ def validate_config_structure(config: TenantGuardConfig) -> None:
             raise ConfigValidationError(msg)
         seen_ids.add(check.id)
         if check.actor not in config.actors:
-            msg = f"Check {check.id!r} references unknown actor: {check.actor!r}"
+            available = ", ".join(sorted(config.actors))
+            msg = (
+                f'Check {check.id} references unknown actor "{check.actor}". '
+                f"Available actors: {available}."
+            )
             raise ConfigValidationError(msg)
+
+
+def find_unused_actors(config: TenantGuardConfig) -> list[str]:
+    """Return actor ids defined in config but not referenced by any check."""
+    used: set[str] = set()
+    for check in config.checks:
+        used.add(check.actor)
+        for match in ACTOR_PLACEHOLDER.finditer(check.request.path):
+            used.add(match.group(1))
+    return sorted(actor_id for actor_id in config.actors if actor_id not in used)
+
+
+def find_unused_resources(config: TenantGuardConfig) -> list[str]:
+    """Return resource ids defined in config but not referenced by any check."""
+    used: set[str] = set()
+    for check in config.checks:
+        for match in RESOURCE_PLACEHOLDER.finditer(check.request.path):
+            used.add(match.group(1))
+    return sorted(resource_id for resource_id in config.resources if resource_id not in used)
 
 
 def validate_token_env(

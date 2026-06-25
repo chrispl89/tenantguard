@@ -2,6 +2,15 @@
 
 ## 0.1.2 - Unreleased
 
+- Added optional check tags for organizing larger authorization test suites.
+- Added `--tag` and `--exclude-tag` filters.
+- Added `--list-checks` for safe check inspection without token resolution or HTTP requests.
+- Improved validation messages for unknown actors/resources.
+- Added warnings for unused actors/resources.
+- Added write-method demo checks for PATCH authorization boundaries.
+- Added a dedicated write-method demo config with `allow_write_methods` enabled.
+- Added demo app endpoints and tests for cross-tenant write authorization.
+- Documented safe usage of write-method checks.
 - Added self-contained HTML reports for TenantGuard run results.
 - Added request/response evidence and assertion details to HTML reports.
 - Added tests to ensure HTML reports escape dynamic content and do not leak secrets.
