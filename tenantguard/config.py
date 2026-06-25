@@ -11,8 +11,11 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from tenantguard import __version__
 from tenantguard.checks.severity import Severity
 from tenantguard.models import RuntimeContext
+
+DEFAULT_USER_AGENT = f"TenantGuard/{__version__} authorization-regression-tester"
 
 ALLOWED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -59,7 +62,7 @@ class SafetyConfig(BaseModel):
 class HttpConfig(BaseModel):
     timeout_seconds: int = 10
     verify_tls: bool = True
-    user_agent: str = "TenantGuard/0.1.0 authorization-regression-tester"
+    user_agent: str = DEFAULT_USER_AGENT
     default_headers: dict[str, str] = Field(default_factory=dict)
 
 

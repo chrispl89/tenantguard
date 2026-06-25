@@ -18,7 +18,6 @@ safety:
 http:
   timeout_seconds: 10
   verify_tls: true
-  user_agent: "TenantGuard/0.1.0 authorization-regression-tester"
   default_headers:
     Accept: "application/json"
     Content-Type: "application/json"

@@ -14,6 +14,7 @@ from rich.table import Table
 from tenantguard import __version__
 from tenantguard.checks.severity import Severity
 from tenantguard.config import (
+    DEFAULT_USER_AGENT,
     CheckConfig,
     ConfigValidationError,
     TenantGuardConfig,
@@ -43,7 +44,7 @@ app = typer.Typer(
 )
 console = Console()
 
-INIT_CONFIG = """version: "0.1"
+INIT_CONFIG = f"""version: "0.1"
 
 project:
   name: "My SaaS Authorization Checks"
@@ -63,7 +64,7 @@ safety:
 http:
   timeout_seconds: 10
   verify_tls: true
-  user_agent: "TenantGuard/0.1.0 authorization-regression-tester"
+  user_agent: "{DEFAULT_USER_AGENT}"
   default_headers:
     Accept: "application/json"
     Content-Type: "application/json"
@@ -442,7 +443,10 @@ def run(
     ] = False,
     report: Annotated[
         ReportFormat,
-        typer.Option("--report", help="Report format."),
+        typer.Option(
+            "--report",
+            help="Report format: none, json, markdown, or html.",
+        ),
     ] = ReportFormat.NONE,
     output: Annotated[
         Path | None,

@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tenantguard"
-version = "0.1.0"
+version = "0.1.2"
 description = "Authorization regression tests for multi-tenant SaaS applications"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Krzysztof Jaronski" }]
+urls = { Homepage = "https://github.com/chrispl89/tenantguard", Repository = "https://github.com/chrispl89/tenantguard" }
 keywords = [
   "saas",
   "security",
