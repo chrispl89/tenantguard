@@ -12,10 +12,11 @@ from tenantguard.client import (
     build_request_url,
     validate_relative_path,
 )
-from tenantguard.config import (
-    TenantGuardConfig,
-)
+from tenantguard.config import TenantGuardConfig, resolve_tokens
 from tenantguard.models import RuntimeContext
+from tenantguard.reporters.json_reporter import render_json_report
+from tenantguard.reporters.markdown_reporter import render_markdown_report
+from tenantguard.runner import RunOptions, run_checks
 
 
 def _config(path: str = "/api/items", method: str = "GET") -> TenantGuardConfig:
@@ -137,6 +138,158 @@ def test_execute_adds_config_headers_and_json_body() -> None:
         import json
 
         assert json.loads(route.calls.last.request.content) == {"name": "demo"}
+
+
+def _cookie_config() -> TenantGuardConfig:
+    return TenantGuardConfig.model_validate(
+        {
+            "target": {"base_url": "http://localhost:8000"},
+            "actors": {
+                "client_a": {
+                    "tenant_id": "client_a",
+                    "role": "client",
+                    "auth": {
+                        "type": "cookie",
+                        "cookie_name": "bb_session",
+                        "token_env": "CLIENT_A_SESSION",
+                    },
+                }
+            },
+            "checks": [
+                {
+                    "id": "COOKIE-001",
+                    "name": "Client profile",
+                    "severity": "medium",
+                    "actor": "client_a",
+                    "request": {"method": "GET", "path": "/api/me"},
+                    "expect": {"status_in": [200]},
+                }
+            ],
+        }
+    )
+
+
+def test_cookie_auth_sends_cookie_to_server() -> None:
+    config = _cookie_config()
+    check = config.checks[0]
+    runtime = RuntimeContext(actor_tokens={"client_a": "secret-cookie-value"})
+
+    with respx.mock:
+        route = respx.get("http://localhost:8000/api/me").mock(
+            return_value=httpx.Response(200, text="{}")
+        )
+        client = TenantGuardHttpClient(
+            base_url=config.target.base_url,
+            timeout=5.0,
+            verify_ssl=True,
+            default_headers={},
+        )
+        client.execute(
+            check,
+            runtime,
+            config,
+            rendered_path="/api/me",
+            secrets=["secret-cookie-value"],
+        )
+        sent_cookie = route.calls.last.request.headers.get("cookie", "")
+        assert "bb_session=secret-cookie-value" in sent_cookie
+
+
+def test_cookie_auth_does_not_send_authorization_header() -> None:
+    config = _cookie_config()
+    check = config.checks[0]
+    runtime = RuntimeContext(actor_tokens={"client_a": "secret-cookie-value"})
+
+    with respx.mock:
+        route = respx.get("http://localhost:8000/api/me").mock(
+            return_value=httpx.Response(200, text="{}")
+        )
+        client = TenantGuardHttpClient(
+            base_url=config.target.base_url,
+            timeout=5.0,
+            verify_ssl=True,
+            default_headers={},
+        )
+        client.execute(
+            check,
+            runtime,
+            config,
+            rendered_path="/api/me",
+            secrets=["secret-cookie-value"],
+        )
+        assert "authorization" not in {
+            key.lower() for key in route.calls.last.request.headers.keys()
+        }
+
+
+def test_cookie_auth_request_snapshot_redacts_cookie() -> None:
+    config = _cookie_config()
+    check = config.checks[0]
+    runtime = RuntimeContext(actor_tokens={"client_a": "secret-cookie-value"})
+
+    with respx.mock:
+        respx.get("http://localhost:8000/api/me").mock(
+            return_value=httpx.Response(200, text="{}")
+        )
+        client = TenantGuardHttpClient(
+            base_url=config.target.base_url,
+            timeout=5.0,
+            verify_ssl=True,
+            default_headers={},
+        )
+        request_snapshot, _, _ = client.execute(
+            check,
+            runtime,
+            config,
+            rendered_path="/api/me",
+            secrets=["secret-cookie-value"],
+        )
+
+    assert request_snapshot.headers["Cookie"] == "bb_session=[REDACTED]"
+    assert "secret-cookie-value" not in str(request_snapshot.headers)
+
+
+def test_bearer_auth_still_sends_authorization_header() -> None:
+    config = _config()
+    check = config.checks[0]
+    runtime = RuntimeContext(actor_tokens={"tenant_a_user": "secret-token-value"})
+
+    with respx.mock:
+        route = respx.get("http://localhost:8000/api/items").mock(
+            return_value=httpx.Response(200, text="ok")
+        )
+        client = TenantGuardHttpClient(
+            base_url=config.target.base_url,
+            timeout=5.0,
+            verify_ssl=True,
+            default_headers={},
+        )
+        client.execute(
+            check,
+            runtime,
+            config,
+            rendered_path="/api/items",
+            secrets=["secret-token-value"],
+        )
+        assert route.calls.last.request.headers["Authorization"] == "Bearer secret-token-value"
+
+
+def test_cookie_auth_reports_do_not_leak_session_value() -> None:
+    config = _cookie_config()
+    runtime = resolve_tokens(config, {"CLIENT_A_SESSION": "secret-cookie-value"})
+
+    with respx.mock:
+        respx.get("http://localhost:8000/api/me").mock(
+            return_value=httpx.Response(200, text="{}")
+        )
+        result = run_checks(config, runtime, RunOptions())
+
+    assert result.summary.passed == 1
+    json_output = render_json_report(result)
+    markdown_output = render_markdown_report(result)
+    assert "secret-cookie-value" not in json_output
+    assert "secret-cookie-value" not in markdown_output
+    assert "[REDACTED]" in json_output
 
 
 def test_network_error_does_not_leak_token() -> None:

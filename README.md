@@ -135,16 +135,52 @@ A fuller example is available at [`examples/configs/tenantguard.basic.yml`](exam
 TenantGuard configs define:
 
 - `target.base_url` — API under test
-- `actors` — users and bearer tokens via `token_env`
+- `actors` — users with bearer or cookie authentication via `token_env`
 - `resources` — known object IDs for templated paths
 - `checks` — HTTP requests and `expect` assertions
 - `safety` — write-method blocking, request limits, redaction
+
+### Bearer authentication
 
 ```yaml
 auth:
   type: "bearer"
   token_env: "TENANT_A_USER_TOKEN"
 ```
+
+### Cookie-based authentication
+
+TenantGuard supports session-cookie based applications, which is useful for SaaS apps that rely on session cookies rather than bearer tokens.
+
+```yaml
+actors:
+  client_a:
+    label: "Client A"
+    tenant_id: "client_a"
+    role: "client"
+    auth:
+      type: "cookie"
+      cookie_name: "bb_session"
+      token_env: "CLIENT_A_SESSION"
+```
+
+This sends:
+
+```http
+Cookie: bb_session=<value from CLIENT_A_SESSION>
+```
+
+The cookie value should be stored in a local env file and must not be committed.
+
+Example `.env.local`:
+
+```bash
+CLIENT_A_SESSION=replace-with-session-cookie-value
+```
+
+Do not paste real session cookies into public configs, reports, or issues.
+
+A minimal cookie-auth example config is available at [`examples/configs/tenantguard.cookie-auth.yml`](examples/configs/tenantguard.cookie-auth.yml).
 
 ## Running checks
 

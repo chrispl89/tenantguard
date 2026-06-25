@@ -10,10 +10,9 @@ import httpx
 from tenantguard.config import CheckConfig, TenantGuardConfig
 from tenantguard.models import RuntimeContext
 from tenantguard.results import RequestSnapshot, ResponseSnapshot
-from tenantguard.safety import redact_secrets
+from tenantguard.safety import REDACTED_MARKER, redact_header_value, redact_secrets
 
 BODY_SNIPPET_LIMIT = 1000
-AUTHORIZATION_REDACTED = "[REDACTED]"
 
 
 class ClientError(Exception):
@@ -39,15 +38,29 @@ def build_request_url(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}{normalized_path}"
 
 
-def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
+def sanitize_headers(
+    headers: dict[str, str],
+    *,
+    secrets: list[str] | None = None,
+) -> dict[str, str]:
     """Return headers safe for reports and terminal output."""
-    sanitized: dict[str, str] = {}
-    for key, value in headers.items():
-        if key.lower() == "authorization":
-            sanitized[key] = AUTHORIZATION_REDACTED
-        else:
-            sanitized[key] = value
-    return sanitized
+    secret_list = secrets or []
+    return {
+        key: redact_header_value(key, value, secret_list)
+        for key, value in headers.items()
+    }
+
+
+def build_auth_snapshot_header(
+    auth_type: str,
+    cookie_name: str | None,
+) -> dict[str, str]:
+    """Build redacted auth headers for request snapshots."""
+    if auth_type == "cookie" and cookie_name:
+        return {"Cookie": f"{cookie_name}={REDACTED_MARKER}"}
+    if auth_type == "bearer":
+        return {"Authorization": REDACTED_MARKER}
+    return {}
 
 
 def make_body_snippet(body: str, secrets: list[str]) -> str:
@@ -82,31 +95,56 @@ class TenantGuardHttpClient:
         secrets: list[str],
     ) -> tuple[RequestSnapshot, ResponseSnapshot, httpx.Response]:
         """Execute a single check and return snapshots plus the raw response."""
-        token = runtime.actor_tokens.get(check.actor)
-        if token is None:
+        actor_config = config.actors[check.actor]
+        secret = runtime.actor_tokens.get(check.actor)
+        if secret is None:
             msg = f"No token resolved for actor {check.actor!r}"
             raise ClientError(msg)
 
         url = build_request_url(self._base_url, rendered_path)
         headers = dict(self._default_headers)
         headers.update(check.request.headers)
-        headers["Authorization"] = f"Bearer {token}"
+
+        request_cookies: dict[str, str] | None = None
+        if actor_config.auth.type == "cookie":
+            cookie_name = actor_config.auth.cookie_name
+            if cookie_name is None:
+                msg = f"cookie_name is required for cookie auth on actor {check.actor!r}"
+                raise ClientError(msg)
+            headers.pop("Authorization", None)
+            headers.pop("Cookie", None)
+            request_cookies = {cookie_name: secret}
+        else:
+            headers["Authorization"] = f"Bearer {secret}"
+
+        snapshot_headers = sanitize_headers(headers, secrets=secrets)
+        snapshot_headers.update(
+            build_auth_snapshot_header(actor_config.auth.type, actor_config.auth.cookie_name)
+        )
 
         request_snapshot = RequestSnapshot(
             method=check.request.method,
             url=url,
             path=validate_relative_path(rendered_path),
             actor=check.actor,
-            headers=sanitize_headers(headers),
+            headers=snapshot_headers,
             json_body=check.request.body_json,
         )
 
         started = time.perf_counter()
         try:
-            with httpx.Client(
-                timeout=self._timeout,
-                verify=self._verify_ssl,
-            ) as client:
+            if request_cookies is not None:
+                client = httpx.Client(
+                    timeout=self._timeout,
+                    verify=self._verify_ssl,
+                    cookies=request_cookies,
+                )
+            else:
+                client = httpx.Client(
+                    timeout=self._timeout,
+                    verify=self._verify_ssl,
+                )
+            with client:
                 response = client.request(
                     check.request.method,
                     url,

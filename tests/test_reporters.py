@@ -103,6 +103,60 @@ def test_json_reporter_produces_valid_json_without_tokens() -> None:
     assert "[REDACTED]" in rendered
 
 
+def test_reporters_redact_cookie_session_values() -> None:
+    request = RequestSnapshot(
+        method="GET",
+        url="http://localhost:8000/api/me",
+        path="/api/me",
+        actor="client_a",
+        headers={"Cookie": "bb_session=[REDACTED]", "Accept": "application/json"},
+        json_body=None,
+    )
+    started = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    finished = datetime(2026, 1, 1, 12, 0, 1, tzinfo=UTC)
+    check = CheckResult(
+        id="COOKIE-001",
+        name="Client profile",
+        severity=Severity.MEDIUM,
+        actor="client_a",
+        status=CheckStatus.PASSED,
+        request=request,
+        response=ResponseSnapshot(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            body_snippet='{"id":"client_a"}',
+            elapsed_ms=10.0,
+        ),
+        assertions=[],
+        error_message=None,
+        started_at=started,
+        finished_at=finished,
+        elapsed_ms=10.0,
+    )
+    result = RunResult(
+        project_name="Cookie demo",
+        target_base_url="http://localhost:8000",
+        started_at=started,
+        finished_at=finished,
+        elapsed_ms=100.0,
+        checks=[check],
+        summary=RunSummary(
+            total=1,
+            passed=1,
+            failed=0,
+            errors=0,
+            skipped=0,
+            highest_failed_severity=None,
+        ),
+    )
+
+    json_output = render_json_report(result)
+    markdown_output = render_markdown_report(result)
+    assert "[REDACTED]" in json_output
+    assert "secret-cookie-value" not in json_output
+    assert "secret-cookie-value" not in markdown_output
+
+
 def test_markdown_reporter_contains_summary_and_findings_without_tokens() -> None:
     markdown = render_markdown_report(_sample_result())
     assert "# TenantGuard Report" in markdown

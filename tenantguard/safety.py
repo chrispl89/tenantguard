@@ -77,6 +77,9 @@ def check_write_methods(config: TenantGuardConfig) -> None:
         raise SafetyError(msg)
 
 
+REDACTED_MARKER = "[REDACTED]"
+
+
 def redact_secrets(value: str, secrets: list[str]) -> str:
     """Replace known secret values with a redaction marker."""
     redacted = value
@@ -84,3 +87,16 @@ def redact_secrets(value: str, secrets: list[str]) -> str:
         if secret:
             redacted = redacted.replace(secret, "<redacted>")
     return redacted
+
+
+def redact_header_value(name: str, value: str, secrets: list[str]) -> str:
+    """Return a header value safe for snapshots, reports, and terminal output."""
+    lowered = name.lower()
+    if lowered == "authorization":
+        return REDACTED_MARKER
+    if lowered == "cookie":
+        for secret in secrets:
+            if secret and secret in value:
+                return REDACTED_MARKER
+        return value
+    return redact_secrets(value, secrets)

@@ -8,11 +8,13 @@ import pytest
 import yaml
 
 from tenantguard.config import (
+    AuthConfig,
     ConfigValidationError,
     load_config,
     resolve_tokens,
     validate_config_structure,
     validate_token_env,
+    warn_inline_tokens,
 )
 from tenantguard.safety import SafetyError, check_write_methods
 from tenantguard.templating import render_path
@@ -176,6 +178,120 @@ def test_unknown_resource_placeholder_raises(tmp_path: Path) -> None:
     config = load_config(_write_config(tmp_path, data))
     with pytest.raises(ConfigValidationError, match="Unknown resource placeholder"):
         render_path(config.checks[0].request.path, config)
+
+
+def test_bearer_auth_config_loads_successfully(tmp_path: Path) -> None:
+    config = load_config(_write_config(tmp_path, _base_config()))
+    assert config.actors["tenant_a_user"].auth.type == "bearer"
+    assert config.actors["tenant_a_user"].auth.cookie_name is None
+
+
+def test_cookie_auth_config_loads_successfully(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"] = {
+        "client_a": {
+            "label": "Client A",
+            "tenant_id": "client_a",
+            "role": "client",
+            "auth": {
+                "type": "cookie",
+                "cookie_name": "bb_session",
+                "token_env": "CLIENT_A_SESSION",
+            },
+        }
+    }
+    data["checks"][0]["actor"] = "client_a"
+    config = load_config(_write_config(tmp_path, data))
+    auth = config.actors["client_a"].auth
+    assert auth.type == "cookie"
+    assert auth.cookie_name == "bb_session"
+    assert auth.token_env == "CLIENT_A_SESSION"
+
+
+def test_cookie_auth_without_cookie_name_fails_validation(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "token_env": "CLIENT_A_SESSION",
+    }
+    with pytest.raises(ConfigValidationError, match="cookie_name is required"):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_cookie_auth_with_empty_cookie_name_fails_validation(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "cookie_name": "",
+        "token_env": "CLIENT_A_SESSION",
+    }
+    with pytest.raises(ConfigValidationError, match="cookie_name is required"):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize("cookie_name", ["bb session", "bb/session", "bb;session", ""])
+def test_cookie_auth_with_invalid_cookie_name_fails_validation(
+    tmp_path: Path, cookie_name: str
+) -> None:
+    if not cookie_name:
+        pytest.skip("empty cookie_name covered by required-field test")
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "cookie_name": cookie_name,
+        "token_env": "CLIENT_A_SESSION",
+    }
+    with pytest.raises(ConfigValidationError, match="Invalid cookie_name"):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_bearer_auth_with_cookie_name_fails_validation(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "bearer",
+        "token_env": "TENANT_A_USER_TOKEN",
+        "cookie_name": "bb_session",
+    }
+    with pytest.raises(ConfigValidationError, match="cookie_name is only allowed"):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_resolve_tokens_works_for_cookie_auth(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "cookie_name": "bb_session",
+        "token_env": "CLIENT_A_SESSION",
+    }
+    config = load_config(_write_config(tmp_path, data))
+    runtime = resolve_tokens(config, {"CLIENT_A_SESSION": "secret-cookie-value"})
+    assert runtime.actor_tokens["tenant_a_user"] == "secret-cookie-value"
+
+
+def test_warn_inline_tokens_includes_cookie_auth_actor(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "cookie_name": "bb_session",
+        "token": "inline-cookie-secret",
+    }
+    config = load_config(_write_config(tmp_path, data))
+    assert warn_inline_tokens(config) == ["tenant_a_user"]
+
+
+def test_cookie_auth_secret_not_leaked_in_repr(tmp_path: Path) -> None:
+    data = _base_config()
+    data["actors"]["tenant_a_user"]["auth"] = {
+        "type": "cookie",
+        "cookie_name": "bb_session",
+        "token": "secret-cookie-value",
+    }
+    config = load_config(_write_config(tmp_path, data))
+    assert "secret-cookie-value" not in repr(config)
+    assert "secret-cookie-value" not in repr(config.actors["tenant_a_user"].auth)
+    assert repr(AuthConfig.model_validate(data["actors"]["tenant_a_user"]["auth"])) == (
+        "AuthConfig(type='cookie', cookie_name='bb_session', token=<redacted>)"
+    )
 
 
 def test_unknown_actor_placeholder_raises(tmp_path: Path) -> None:

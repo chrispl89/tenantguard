@@ -56,6 +56,48 @@ def test_runner_returns_passed_check() -> None:
     assert result.checks[0].status == CheckStatus.PASSED
 
 
+def test_runner_cookie_auth_passes_without_leaking_session() -> None:
+    config = TenantGuardConfig.model_validate(
+        {
+            "target": {"base_url": "http://localhost:8000"},
+            "actors": {
+                "client_a": {
+                    "tenant_id": "client_a",
+                    "role": "client",
+                    "auth": {
+                        "type": "cookie",
+                        "cookie_name": "bb_session",
+                        "token_env": "CLIENT_A_SESSION",
+                    },
+                }
+            },
+            "checks": [
+                {
+                    "id": "COOKIE-001",
+                    "name": "Client profile",
+                    "severity": "medium",
+                    "actor": "client_a",
+                    "request": {"method": "GET", "path": "/api/me"},
+                    "expect": {"status_in": [200]},
+                }
+            ],
+        }
+    )
+    runtime = resolve_tokens(config, {"CLIENT_A_SESSION": "secret-cookie-value"})
+
+    with respx.mock:
+        respx.get("http://localhost:8000/api/me").mock(
+            return_value=httpx.Response(200, text="{}")
+        )
+        result = run_checks(config, runtime, RunOptions())
+
+    assert result.summary.passed == 1
+    assert result.checks[0].status == CheckStatus.PASSED
+    serialized = str(result)
+    assert "secret-cookie-value" not in serialized
+    assert result.checks[0].request.headers["Cookie"] == "bb_session=[REDACTED]"
+
+
 def test_runner_returns_failed_on_assertion_mismatch() -> None:
     config, runtime = _make_config(
         {

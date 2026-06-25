@@ -1,0 +1,35 @@
+version: "0.1"
+
+project:
+  name: "Cookie auth example"
+
+target:
+  base_url: "http://localhost:8000"
+
+safety:
+  allow_write_methods: false
+
+http:
+  timeout_seconds: 10
+  verify_tls: true
+
+actors:
+  client_a:
+    label: "Client A"
+    tenant_id: "tenant_a"
+    role: "client"
+    auth:
+      type: "cookie"
+      cookie_name: "app_session"
+      token_env: "CLIENT_A_SESSION"
+
+checks:
+  - id: "COOKIE-001"
+    name: "Client A can access own profile"
+    severity: "medium"
+    actor: "client_a"
+    request:
+      method: "GET"
+      path: "/api/me"
+    expect:
+      status_in: [200]

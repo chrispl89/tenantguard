@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -15,6 +16,7 @@ from tenantguard.models import RuntimeContext
 
 ALLOWED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+COOKIE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class ConfigValidationError(Exception):
@@ -59,21 +61,43 @@ class HttpConfig(BaseModel):
 
 
 class AuthConfig(BaseModel):
-    type: Literal["bearer"] = "bearer"
+    type: Literal["bearer", "cookie"] = "bearer"
     token: str | None = None
     token_env: str | None = None
+    cookie_name: str | None = None
 
     @model_validator(mode="after")
-    def validate_token_source(self) -> AuthConfig:
+    def validate_auth(self) -> AuthConfig:
         if self.token and self.token_env:
             msg = "auth must use either token or token_env, not both"
             raise ValueError(msg)
         if not self.token and not self.token_env:
             msg = "auth must define token or token_env"
             raise ValueError(msg)
+        if self.type == "bearer":
+            if self.cookie_name is not None:
+                msg = "cookie_name is only allowed for cookie authentication."
+                raise ValueError(msg)
+        elif self.type == "cookie":
+            if not self.cookie_name:
+                msg = "cookie_name is required for cookie authentication."
+                raise ValueError(msg)
+            if not COOKIE_NAME_PATTERN.match(self.cookie_name):
+                msg = "Invalid cookie_name. Use letters, numbers, dot, underscore or hyphen."
+                raise ValueError(msg)
         return self
 
     def __repr__(self) -> str:
+        if self.type == "cookie":
+            token_source = (
+                f"token_env={self.token_env!r}"
+                if self.token_env
+                else "token=<redacted>"
+            )
+            return (
+                f"AuthConfig(type={self.type!r}, cookie_name={self.cookie_name!r}, "
+                f"{token_source})"
+            )
         if self.token_env:
             return f"AuthConfig(type={self.type!r}, token_env={self.token_env!r})"
         return f"AuthConfig(type={self.type!r}, token=<redacted>)"
