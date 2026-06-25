@@ -110,5 +110,7 @@ def test_markdown_reporter_contains_summary_and_findings_without_tokens() -> Non
     assert "## Findings" in markdown
     assert "TG-001" in markdown
     assert "## Passed checks" in markdown
+    assert "| Check ID | Name | Severity | Status | Duration |" in markdown
+    assert "| --- | --- | --- | --- | --- |" in markdown
     assert "secret-token-value" not in markdown
     assert "Bearer secret" not in markdown

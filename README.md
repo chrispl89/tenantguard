@@ -60,11 +60,9 @@ The endpoint checks authentication, not tenant ownership. TenantGuard is designe
 
 ## Installation
 
-```bash
-pip install tenantguard
-```
+TenantGuard is not published to PyPI yet.
 
-For local development from this repository:
+Install from this repository:
 
 ```bash
 git clone https://github.com/chrispl89/tenantguard.git
@@ -72,6 +70,18 @@ cd tenantguard
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,demo]"
+```
+
+For core-only local usage:
+
+```bash
+pip install -e .
+```
+
+Planned future installation:
+
+```bash
+pip install tenantguard
 ```
 
 ## Quickstart
@@ -258,7 +268,7 @@ Local report files are written under `reports/` by default. That directory is gi
 | `0` | Success — no findings at or above `--fail-on` |
 | `1` | Findings detected at or above `--fail-on` |
 | `2` | Invalid configuration |
-| `3` | Safety confirmation required (public target without `--confirm-authorized-scope`) |
+| `3` | Safety confirmation required: public target without `--confirm-authorized-scope` |
 | `4` | Target unavailable |
 | `5` | Internal error |
 
