@@ -26,6 +26,7 @@ from tenantguard.config import (
     warn_inline_tokens,
 )
 from tenantguard.models import ExitCode, RuntimeContext
+from tenantguard.reporters.html_reporter import write_html_report
 from tenantguard.reporters.json_reporter import write_json_report
 from tenantguard.reporters.markdown_reporter import write_markdown_report
 from tenantguard.results import CheckStatus, RunResult
@@ -119,6 +120,7 @@ class ReportFormat(StrEnum):
     NONE = "none"
     JSON = "json"
     MARKDOWN = "markdown"
+    HTML = "html"
 
 
 def _write_file(path: Path, content: str, *, force: bool) -> bool:
@@ -253,6 +255,8 @@ def _print_run_summary(result: RunResult) -> None:
 def _default_report_path(report_format: ReportFormat) -> Path:
     if report_format == ReportFormat.JSON:
         return Path("reports/tenantguard-report.json")
+    if report_format == ReportFormat.HTML:
+        return Path("reports/tenantguard-report.html")
     return Path("reports/tenantguard-report.md")
 
 
@@ -266,6 +270,8 @@ def _write_report(
     destination = output_path or _default_report_path(report_format)
     if report_format == ReportFormat.JSON:
         return write_json_report(result, destination)
+    if report_format == ReportFormat.HTML:
+        return write_html_report(result, destination)
     return write_markdown_report(result, destination)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 - Unreleased
+
+- Added self-contained HTML reports for TenantGuard run results.
+- Added request/response evidence and assertion details to HTML reports.
+- Added tests to ensure HTML reports escape dynamic content and do not leak secrets.
+- Added an example HTML report under `examples/reports/`.
+
 ## 0.1.1 - Unreleased
 
 - Added cookie-based actor authentication with redacted Cookie headers.

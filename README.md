@@ -290,10 +290,25 @@ TenantGuard can write:
 
 - **JSON** — machine-readable run results
 - **Markdown** — human-readable findings for review and CI artifacts
+- **HTML** — self-contained reports for local review in a browser
 
-Example demo output: [`examples/reports/demo-report.example.md`](examples/reports/demo-report.example.md)
+Example demo output:
 
-Reports redact bearer tokens and sensitive values. Authorization headers are not included in report output.
+- [`examples/reports/demo-report.example.md`](examples/reports/demo-report.example.md)
+- [`examples/reports/demo-report.example.html`](examples/reports/demo-report.example.html)
+
+HTML reports are self-contained files designed for local review and sharing with teams. They include the run summary, failed checks, passed checks, assertion details, and redacted request/response evidence.
+
+Generate an HTML report:
+
+```bash
+tenantguard run examples/configs/tenantguard-demo.yml \
+  --env examples/vulnerable-fastapi-app/.env.demo \
+  --report html \
+  --output reports/demo-report.html
+```
+
+Reports redact bearer tokens, cookie session values, and other sensitive values. Authorization and Cookie headers are redacted in report output.
 
 Local report files are written under `reports/` by default. That directory is gitignored.
 

@@ -293,6 +293,118 @@ def test_run_executes_runner_and_writes_json_report(tmp_path: Path, monkeypatch)
     assert "secret" not in report_path.read_text(encoding="utf-8")
 
 
+def _report_run_config(tmp_path: Path) -> tuple[Path, Path]:
+    config = {
+        "version": "0.1",
+        "target": {"base_url": "http://localhost:8000"},
+        "actors": {
+            "tenant_a_user": {
+                "tenant_id": "tenant_a",
+                "role": "user",
+                "auth": {"type": "bearer", "token_env": "TENANT_A_USER_TOKEN"},
+            }
+        },
+        "checks": [
+            {
+                "id": "TG-001",
+                "name": "Example",
+                "severity": "low",
+                "actor": "tenant_a_user",
+                "request": {"method": "GET", "path": "/api/items"},
+                "expect": {"status_in": [403, 404]},
+            }
+        ],
+    }
+    config_path = tmp_path / "tenantguard.yml"
+    config_path.write_text(yaml.dump(config), encoding="utf-8")
+    env_path = tmp_path / ".env.local"
+    env_path.write_text("TENANT_A_USER_TOKEN=secret\n", encoding="utf-8")
+    return config_path, env_path
+
+
+def test_run_executes_runner_and_writes_html_report(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path, env_path = _report_run_config(tmp_path)
+    report_path = tmp_path / "reports" / "report.html"
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("http://localhost:8000/api/items").mock(
+            return_value=httpx.Response(200, text="ok")
+        )
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                str(config_path),
+                "--env",
+                str(env_path),
+                "--report",
+                "html",
+                "--output",
+                str(report_path),
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert report_path.exists()
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "<!doctype html>" in report_text.lower()
+    assert "Report written to:" in result.stdout
+    assert "secret" not in report_text
+
+
+def test_run_executes_runner_and_writes_markdown_report(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path, env_path = _report_run_config(tmp_path)
+    report_path = tmp_path / "reports" / "report.md"
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("http://localhost:8000/api/items").mock(
+            return_value=httpx.Response(200, text="ok")
+        )
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                str(config_path),
+                "--env",
+                str(env_path),
+                "--report",
+                "markdown",
+                "--output",
+                str(report_path),
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert report_path.exists()
+    assert "# TenantGuard Report" in report_path.read_text(encoding="utf-8")
+    assert "Report written to:" in result.stdout
+
+
+def test_run_rejects_invalid_report_format(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path, env_path = _report_run_config(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(config_path),
+            "--env",
+            str(env_path),
+            "--report",
+            "pdf",
+        ],
+    )
+    assert result.exit_code != 0
+
+
 def test_run_fail_on_high_ignores_low_severity_failure(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     config = {

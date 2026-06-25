@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TenantGuard Vulnerable FastAPI Demo — TenantGuard Report</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --critical: #991b1b;
+      --high: #b45309;
+      --medium: #92400e;
+      --low: #1d4ed8;
+      --passed: #166534;
+      --failed: #b91c1c;
+      --error: #7c2d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    header.page-header, section, footer {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    h1, h2, h3, h4 { margin-top: 0; }
+    .muted { color: var(--muted); }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .summary-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fafafa;
+    }
+    .summary-card strong {
+      display: block;
+      font-size: 1.4rem;
+    }
+    .check-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: #fff;
+    }
+    .check-card.failed { border-left: 4px solid var(--failed); }
+    .check-card.error { border-left: 4px solid var(--error); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+    }
+    .severity-critical { background: #fee2e2; color: var(--critical); }
+    .severity-high { background: #ffedd5; color: var(--high); }
+    .severity-medium { background: #fef3c7; color: var(--medium); }
+    .severity-low { background: #dbeafe; color: var(--low); }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px 16px;
+      margin: 12px 0;
+    }
+    .meta div { margin: 0; }
+    .meta dt { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+    .meta dd { margin: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f3f4f6; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin: 0;
+      font-size: 0.9rem;
+    }
+    details.evidence {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fcfcfd;
+    }
+    .evidence-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .empty { color: var(--muted); }
+    footer { font-size: 0.95rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <h1>TenantGuard Report</h1>
+      <p class="muted">Project: <strong>TenantGuard Vulnerable FastAPI Demo</strong></p>
+      <p class="muted">Target: <strong>http://localhost:8000</strong></p>
+      <p class="muted">Started: 2026-01-01T12:00:00+00:00</p>
+      <p class="muted">Finished: 2026-01-01T12:00:01+00:00</p>
+      <p class="muted">Elapsed: 842.15 ms</p>
+    </header>
+
+    <section>
+      <h2>Summary</h2>
+      <div class="summary-grid">
+        <div class="summary-card"><span class="muted">Total</span><strong>4</strong></div>
+        <div class="summary-card"><span class="muted">Passed</span><strong>2</strong></div>
+        <div class="summary-card"><span class="muted">Failed</span><strong>2</strong></div>
+        <div class="summary-card"><span class="muted">Errors</span><strong>0</strong></div>
+        <div class="summary-card"><span class="muted">Skipped</span><strong>0</strong></div>
+        <div class="summary-card"><span class="muted">Highest failed severity</span><strong>critical</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Failed checks</h2>
+      <article class='check-card failed'><header><h3>TG-DEMO-001 — Tenant A user cannot access Tenant B invoice through vulnerable endpoint</h3><span class='badge severity-critical'>critical</span></header><dl class='meta'><div><dt>Status</dt><dd>failed</dd></div><div><dt>Actor</dt><dd>tenant_a_user</dd></div><div><dt>Duration</dt><dd>98.42 ms</dd></div><div><dt>Request</dt><dd>GET /vulnerable/invoices/inv_b_001</dd></div><div><dt>Response status</dt><dd>200</dd></div></dl><div class='failed-assertions'><h4>Failed assertions</h4><ul><li><strong>status_in</strong>: Expected status in [403, 404], got 200.</li></ul></div><details class='evidence'><summary>Request and response evidence</summary><div class='evidence-grid'><div><h4>Request headers</h4><pre>Authorization: [REDACTED]
+Accept: application/json</pre></div><div><h4>Request body</h4><pre>none</pre></div><div><h4>Response status</h4><pre>200</pre></div><div><h4>Response headers</h4><pre>content-type: application/json</pre></div><div><h4>Response body snippet</h4><pre>{&quot;id&quot;:&quot;inv_b_001&quot;,&quot;tenant_id&quot;:&quot;tenant_b&quot;,&quot;marker&quot;:&quot;TENANT_B_INVOICE_MARKER&quot;}</pre></div><div><h4>Assertion results</h4><table class='assertions'><thead><tr><th>Name</th><th>Status</th><th>Message</th><th>Expected</th><th>Actual</th></tr></thead><tbody><tr><td>status_in</td><td>failed</td><td>Expected status in [403, 404], got 200.</td><td><pre></pre></td><td><pre>200</pre></td></tr></tbody></table></div></div></details></article><article class='check-card failed'><header><h3>TG-DEMO-002 — Vulnerable customer list should not leak Tenant B customer marker</h3><span class='badge severity-high'>high</span></header><dl class='meta'><div><dt>Status</dt><dd>failed</dd></div><div><dt>Actor</dt><dd>tenant_a_user</dd></div><div><dt>Duration</dt><dd>76.11 ms</dd></div><div><dt>Request</dt><dd>GET /vulnerable/customers</dd></div><div><dt>Response status</dt><dd>200</dd></div></dl><div class='failed-assertions'><h4>Failed assertions</h4><ul><li><strong>body_not_contains</strong>: Body unexpectedly contains &#x27;TENANT_B_CUSTOMER_MARKER&#x27;.</li></ul></div><details class='evidence'><summary>Request and response evidence</summary><div class='evidence-grid'><div><h4>Request headers</h4><pre>Authorization: [REDACTED]
+Accept: application/json</pre></div><div><h4>Request body</h4><pre>none</pre></div><div><h4>Response status</h4><pre>200</pre></div><div><h4>Response headers</h4><pre>content-type: application/json</pre></div><div><h4>Response body snippet</h4><pre>[{&quot;marker&quot;:&quot;TENANT_A_CUSTOMER_MARKER&quot;},{&quot;marker&quot;:&quot;TENANT_B_CUSTOMER_MARKER&quot;}]</pre></div><div><h4>Assertion results</h4><table class='assertions'><thead><tr><th>Name</th><th>Status</th><th>Message</th><th>Expected</th><th>Actual</th></tr></thead><tbody><tr><td>body_not_contains</td><td>failed</td><td>Body unexpectedly contains &#x27;TENANT_B_CUSTOMER_MARKER&#x27;.</td><td><pre></pre></td><td><pre>200</pre></td></tr></tbody></table></div></div></details></article>
+    </section>
+
+    <section>
+      <h2>Error checks</h2>
+      <p class='empty'>No errored checks.</p>
+    </section>
+
+    <section>
+      <h2>Passed checks</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Check ID</th>
+            <th>Name</th>
+            <th>Severity</th>
+            <th>Actor</th>
+            <th>Status</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>TG-DEMO-004</td><td>Tenant A user cannot access Tenant B invoice through secure endpoint</td><td>critical</td><td>tenant_a_user</td><td>passed</td><td>71.22 ms</td></tr><tr><td>TG-DEMO-005</td><td>Secure customer list does not leak Tenant B marker</td><td>high</td><td>tenant_a_user</td><td>passed</td><td>69.45 ms</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <p>TenantGuard is intended only for applications you own, maintain, or are explicitly authorized to test.</p>
+    </footer>
+  </main>
+</body>
+</html>
