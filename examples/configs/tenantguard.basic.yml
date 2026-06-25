@@ -1,0 +1,119 @@
+version: "0.1"
+
+project:
+  name: "Demo SaaS Authorization Checks"
+  description: "Authorization regression tests for a multi-tenant SaaS API"
+
+target:
+  base_url: "http://localhost:8000"
+  authorized: true
+
+safety:
+  allow_write_methods: false
+  confirm_authorized_scope: true
+  max_requests_per_run: 100
+  request_delay_ms: 100
+  redact_sensitive_values: true
+
+http:
+  timeout_seconds: 10
+  verify_tls: true
+  user_agent: "TenantGuard/0.1.0 authorization-regression-tester"
+  default_headers:
+    Accept: "application/json"
+    Content-Type: "application/json"
+
+actors:
+  tenant_a_user:
+    label: "Tenant A regular user"
+    tenant_id: "tenant_a"
+    role: "user"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_A_USER_TOKEN"
+
+  tenant_a_admin:
+    label: "Tenant A admin"
+    tenant_id: "tenant_a"
+    role: "admin"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_A_ADMIN_TOKEN"
+
+  tenant_b_user:
+    label: "Tenant B regular user"
+    tenant_id: "tenant_b"
+    role: "user"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_B_USER_TOKEN"
+
+resources:
+  tenant_a_invoice:
+    type: "invoice"
+    id: "inv_a_001"
+    tenant_id: "tenant_a"
+    owner_actor: "tenant_a_user"
+    forbidden_markers:
+      - "tenant_b"
+      - "client-b@example.com"
+      - "TENANT_B_SECRET_MARKER"
+
+  tenant_b_invoice:
+    type: "invoice"
+    id: "inv_b_001"
+    tenant_id: "tenant_b"
+    owner_actor: "tenant_b_user"
+    forbidden_markers:
+      - "tenant_a"
+      - "client-a@example.com"
+      - "TENANT_A_SECRET_MARKER"
+
+checks:
+  - id: "TG-001"
+    name: "Tenant A user cannot access Tenant B invoice"
+    description: "A regular user from tenant A must not be able to read an invoice owned by tenant B."
+    severity: "critical"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/api/invoices/{{ resources.tenant_b_invoice.id }}"
+    expect:
+      status_in: [403, 404]
+
+  - id: "TG-002"
+    name: "Tenant B user cannot access Tenant A invoice"
+    description: "A regular user from tenant B must not be able to read an invoice owned by tenant A."
+    severity: "critical"
+    actor: "tenant_b_user"
+    request:
+      method: "GET"
+      path: "/api/invoices/{{ resources.tenant_a_invoice.id }}"
+    expect:
+      status_in: [403, 404]
+
+  - id: "TG-003"
+    name: "Regular user cannot access admin settings"
+    description: "A regular tenant user must not be able to access admin-only settings."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/api/admin/settings"
+    expect:
+      status_in: [403]
+
+  - id: "TG-004"
+    name: "Tenant A customer list does not leak Tenant B data"
+    description: "List endpoints must filter records by tenant."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/api/customers"
+    expect:
+      status_in: [200]
+      body_not_contains:
+        - "tenant_b"
+        - "client-b@example.com"
+        - "TENANT_B_SECRET_MARKER"

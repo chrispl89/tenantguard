@@ -1,0 +1,177 @@
+version: "0.1"
+
+project:
+  name: "TenantGuard Vulnerable FastAPI Demo"
+  description: "Authorization regression checks against the local demo application"
+
+target:
+  base_url: "http://localhost:8000"
+  authorized: true
+
+safety:
+  allow_write_methods: false
+  confirm_authorized_scope: true
+  max_requests_per_run: 50
+  request_delay_ms: 50
+  redact_sensitive_values: true
+
+http:
+  timeout_seconds: 10
+  verify_tls: true
+  user_agent: "TenantGuard/0.1.0 authorization-regression-tester"
+  default_headers:
+    Accept: "application/json"
+    Content-Type: "application/json"
+
+actors:
+  tenant_a_user:
+    label: "Tenant A regular user"
+    tenant_id: "tenant_a"
+    role: "user"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_A_USER_TOKEN"
+
+  tenant_a_admin:
+    label: "Tenant A admin"
+    tenant_id: "tenant_a"
+    role: "admin"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_A_ADMIN_TOKEN"
+
+  tenant_b_user:
+    label: "Tenant B regular user"
+    tenant_id: "tenant_b"
+    role: "user"
+    auth:
+      type: "bearer"
+      token_env: "TENANT_B_USER_TOKEN"
+
+  platform_admin:
+    label: "Platform admin"
+    tenant_id: "platform"
+    role: "platform_admin"
+    auth:
+      type: "bearer"
+      token_env: "PLATFORM_ADMIN_TOKEN"
+
+resources:
+  invoice_a:
+    type: "invoice"
+    id: "inv_a_001"
+    tenant_id: "tenant_a"
+
+  invoice_b:
+    type: "invoice"
+    id: "inv_b_001"
+    tenant_id: "tenant_b"
+
+  customer_a:
+    type: "customer"
+    id: "cus_a_001"
+    tenant_id: "tenant_a"
+
+  customer_b:
+    type: "customer"
+    id: "cus_b_001"
+    tenant_id: "tenant_b"
+
+checks:
+  - id: "TG-DEMO-001"
+    name: "Tenant A user cannot access Tenant B invoice through vulnerable endpoint"
+    description: "A regular tenant A user must not read tenant B invoices via the vulnerable route."
+    severity: "critical"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/vulnerable/invoices/{{ resources.invoice_b.id }}"
+    expect:
+      status_in: [403, 404]
+
+  - id: "TG-DEMO-002"
+    name: "Vulnerable customer list should not leak Tenant B customer marker"
+    description: "List endpoints must not expose foreign tenant customer markers."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/vulnerable/customers"
+    expect:
+      status_in: [200]
+      body_not_contains:
+        - "TENANT_B_CUSTOMER_MARKER"
+        - "customer-b@tenant-b.example"
+
+  - id: "TG-DEMO-003"
+    name: "Regular Tenant A user cannot access vulnerable admin settings"
+    description: "Regular users must not access admin-only settings."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/vulnerable/admin/settings"
+    expect:
+      status_in: [403]
+
+  - id: "TG-DEMO-004"
+    name: "Tenant A user cannot access Tenant B invoice through secure endpoint"
+    description: "Secure invoice access must block cross-tenant reads."
+    severity: "critical"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/secure/invoices/{{ resources.invoice_b.id }}"
+    expect:
+      status_in: [403, 404]
+
+  - id: "TG-DEMO-005"
+    name: "Secure customer list does not leak Tenant B marker"
+    description: "Secure customer list must filter by tenant."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/secure/customers"
+    expect:
+      status_in: [200]
+      body_not_contains:
+        - "TENANT_B_CUSTOMER_MARKER"
+        - "customer-b@tenant-b.example"
+
+  - id: "TG-DEMO-006"
+    name: "Regular Tenant A user cannot access secure admin settings"
+    description: "Secure admin settings must require admin role."
+    severity: "high"
+    actor: "tenant_a_user"
+    request:
+      method: "GET"
+      path: "/secure/admin/settings"
+    expect:
+      status_in: [403]
+
+  - id: "TG-DEMO-007"
+    name: "Tenant A admin can access secure admin settings"
+    description: "Tenant admins should access their tenant settings."
+    severity: "medium"
+    actor: "tenant_a_admin"
+    request:
+      method: "GET"
+      path: "/secure/admin/settings"
+    expect:
+      status_in: [200]
+      body_contains:
+        - "tenant_a"
+
+  - id: "TG-DEMO-008"
+    name: "Platform admin can access Tenant B invoice through secure endpoint"
+    description: "Platform admins may access cross-tenant resources by design."
+    severity: "medium"
+    actor: "platform_admin"
+    request:
+      method: "GET"
+      path: "/secure/invoices/{{ resources.invoice_b.id }}"
+    expect:
+      status_in: [200]
+      body_contains:
+        - "TENANT_B_INVOICE_MARKER"
